@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Family Safety - WebRTC Stream & Location Monitor</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Firebase App & Database Compat SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-database-compat.js"></script>
+    <style>
+        :root {
+          --bg: #0b1329;
+          --card-bg: #152243;
+          --border: #233560;
+          --text: #e2e8f0;
+          --text-muted: #94a3b8;
+          --primary: #0284c7;
+          --primary-hover: #0369a1;
+          --success: #10b981;
+          --danger: #ef4444;
+          --warning: #f59e0b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          background: var(--bg);
+          color: var(--text);
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+        }
+        header {
+          background: var(--card-bg);
+          border-bottom: 1px solid var(--border);
+          padding: 16px 24px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .header-title h1 {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #f8fafc;
+        }
+        .header-title p {
+          font-size: 0.85rem;
+          color: var(--text-muted);
+        }
+        .status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 9999px;
+          font-size: 0.8rem;
+          font-weight: 600;
+          background: rgba(16, 185, 129, 0.15);
+          color: #34d399;
+          border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .status-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #34d399;
+        }
+        .container {
+          max-width: 1400px;
+          margin: 0 auto;
+          padding: 24px;
+          width: 100%;
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 24px;
+        }
+        @media (min-width: 1024px) {
+          .container {
+            grid-template-columns: 3fr 2fr;
+          }
+        }
+        .card {
+          background: var(--card-bg);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
+        .card-header {
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .card-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: #f1f5f9;
+        }
+        .card-body {
+          padding: 20px;
+          flex: 1;
+        }
+        .video-wrapper {
+          position: relative;
+          width: 100%;
+          height: 480px;
+          background: #050b18;
+          border-radius: 8px;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        video {
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+          background: #000;
+        }
+        .video-overlay {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          background: rgba(15, 23, 42, 0.8);
+          backdrop-filter: blur(4px);
+          padding: 6px 12px;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          color: #94a3b8;
+          border: 1px solid var(--border);
+        }
+        .btn-group {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px;
+          margin-top: 16px;
+        }
+        button {
+          padding: 10px 16px;
+          border-radius: 8px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          cursor: pointer;
+          border: none;
+          transition: all 0.2s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-secondary { background: #334155; color: white; }
+        .btn-secondary:hover { background: #475569; }
+        .btn-danger { background: #dc2626; color: white; }
+        .btn-danger:hover { background: #b91c1c; }
+        .input-group {
+          margin-bottom: 14px;
+        }
+        .input-group label {
+          display: block;
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+          font-weight: 500;
+        }
+        .input-group input {
+          width: 100%;
+          padding: 10px 12px;
+          background: #0a1124;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          color: #fff;
+          font-size: 0.9rem;
+        }
+        .input-group input:focus {
+          outline: none;
+          border-color: var(--primary);
+        }
+        #map {
+          width: 100%;
+          height: 320px;
+          border-radius: 8px;
+          border: 1px solid var(--border);
+        }
+        .telemetry-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+        .telemetry-item {
+          background: #0e172e;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        .telemetry-label {
+          font-size: 0.75rem;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .telemetry-val {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: #f8fafc;
+          margin-top: 4px;
+        }
+        .terminal {
+          background: #070d1d;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          padding: 12px;
+          font-family: monospace;
+          font-size: 0.75rem;
+          height: 160px;
+          overflow-y: auto;
+          color: #38bdf8;
+        }
+        .terminal div { margin-bottom: 4px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-title">
+        <h1>Family Safety & WebRTC Viewer</h1>
+        <p>Android 14 Native Stream & Location Monitor (GitHub Pages Standalone)</p>
+    </div>
+    <div id="connectionStatus" class="status-badge">
+        <span class="status-dot"></span>
+        <span id="statusText">Awaiting Firebase Config</span>
+    </div>
+</header>
+
+<div class="container">
+    <!-- Left Column: Video Streaming Player & Controls -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">Live WebRTC Media Feed</span>
+            <span id="streamStateBadge" style="font-size: 0.8rem; color: #94a3b8;">Stream: Idle</span>
+        </div>
+        <div class="card-body">
+            <div class="video-wrapper">
+                <video id="remoteVideo" autoplay playsinline controls></video>
+                <div class="video-overlay" id="videoResolutionTag">Waiting for SDP Offer...</div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-primary" onclick="sendCommand('START_SCREEN')">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.11-.9-2-2-2H4c-1.11 0-2 .89-2 2v10c0 1.1.89 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+                    Request Screen Share
+                </button>
+                <button class="btn-secondary" onclick="sendCommand('START_CAMERA_FRONT')">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                    Front Camera
+                </button>
+                <button class="btn-secondary" onclick="sendCommand('START_CAMERA_BACK')">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                    Rear Camera
+                </button>
+                <button class="btn-danger" onclick="sendCommand('STOP_STREAM')">
+                    <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+                    Stop Stream
+                </button>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <h4 style="font-size: 0.85rem; margin-bottom: 8px; color: #cbd5e1;">Signaling & ICE Event Log</h4>
+                <div class="terminal" id="logConsole">
+                    <div>[System] Dashboard initialized. Configure Firebase database to begin.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Settings, Telemetry & Real-Time Map -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Firebase Configuration -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Device & Database Settings</span>
+            </div>
+            <div class="card-body">
+                <div class="input-group">
+                    <label for="deviceIdInput">Target Device ID</label>
+                    <input type="text" id="deviceIdInput" value="child_device_001" placeholder="e.g. child_device_001" />
+                </div>
+                <div class="input-group">
+                    <label for="dbUrlInput">Firebase Realtime Database URL</label>
+                    <input type="text" id="dbUrlInput" value="https://familysafety-a7e39-default-rtdb.firebaseio.com/" placeholder="https://your-project-default-rtdb.firebaseio.com" />
+                </div>
+                <button class="btn-primary" style="width: 100%; justify-content: center;" onclick="connectFirebase()">
+                    Connect & Listen for Device
+                </button>
+            </div>
+        </div>
+
+        <!-- Device Telemetry -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Device Telemetry</span>
+                <span id="telemetryLastPing" style="font-size: 0.75rem; color: #94a3b8;">Never</span>
+            </div>
+            <div class="card-body">
+                <div class="telemetry-grid">
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Status</div>
+                        <div class="telemetry-val" id="telemetryStatus">Unknown</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Battery Level</div>
+                        <div class="telemetry-val" id="telemetryBattery">--%</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">GPS Accuracy</div>
+                        <div class="telemetry-val" id="telemetryAccuracy">-- m</div>
+                    </div>
+                    <div class="telemetry-item">
+                        <div class="telemetry-label">Movement Speed</div>
+                        <div class="telemetry-val" id="telemetrySpeed">0 km/h</div>
+                    </div>
+                </div>
+
+                <h4 style="font-size: 0.85rem; margin-bottom: 8px; color: #cbd5e1;">Live Location Tracking</h4>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db = null;
+    let peerConnection = null;
+    let map = null;
+    let marker = null;
+    let accuracyCircle = null;
+
+    const rtcConfig = {
+      iceServers: [
+        { urls: "stun:stun.relay.metered.ca:80" },
+        {
+          urls: "turn:global.relay.metered.ca:80",
+          username: "metered",
+          credential: "metered"
+        },
+        {
+          urls: "turn:global.relay.metered.ca:443?transport=tcp",
+          username: "metered",
+          credential: "metered"
+        },
+        { urls: "stun:stun.l.google.com:19302" }
+      ]
+    };
+
+    function log(msg) {
+      const consoleDiv = document.getElementById("logConsole");
+      const item = document.createElement("div");
+      const time = new Date().toLocaleTimeString();
+      item.textContent = `[${time}] ${msg}`;
+      consoleDiv.appendChild(item);
+      consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    }
+
+    // Initialize Map
+    function initMap() {
+      map = L.map('map').setView([37.7749, -122.4194], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+    }
+
+    // Connect Firebase
+    function connectFirebase() {
+      const dbUrl = document.getElementById("dbUrlInput").value.trim();
+      const deviceId = document.getElementById("deviceIdInput").value.trim();
+
+      if (!dbUrl) {
+        alert("Please enter a valid Firebase Realtime Database URL");
+        return;
+      }
+
+      localStorage.setItem("saved_db_url", dbUrl);
+      localStorage.setItem("saved_device_id", deviceId);
+
+      try {
+        if (!firebase.apps.length) {
+          firebase.initializeApp({ databaseURL: dbUrl });
+        }
+        db = firebase.database();
+
+        document.getElementById("statusText").textContent = `Connected: ${deviceId}`;
+        log(`Firebase connected to ${dbUrl}`);
+
+        listenToDevice(deviceId);
+        listenToSignaling(deviceId);
+      } catch (err) {
+        log(`Firebase Error: ${err.message}`);
+        alert("Failed to initialize Firebase: " + err.message);
+      }
+    }
+
+    function listenToDevice(deviceId) {
+      // Listen to status and telemetry
+      db.ref(`devices/${deviceId}`).on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        if (data.status) {
+          document.getElementById("telemetryStatus").textContent = data.status.toUpperCase();
+          document.getElementById("streamStateBadge").textContent = `Stream: ${data.status}`;
+        }
+        if (data.battery !== undefined) {
+          document.getElementById("telemetryBattery").textContent = `${data.battery}% ${data.isCharging ? '⚡' : ''}`;
+        }
+        if (data.lastPing) {
+          document.getElementById("telemetryLastPing").textContent = new Date(data.lastPing).toLocaleTimeString();
+        }
+
+        // Location payload
+        if (data.location) {
+          const loc = data.location;
+          document.getElementById("telemetryAccuracy").textContent = `±${Math.round(loc.accuracy || 0)} m`;
+          const speedKmH = Math.round((loc.speed || 0) * 3.6);
+          document.getElementById("telemetrySpeed").textContent = `${speedKmH} km/h`;
+
+          if (loc.lat && loc.lng) {
+            updateMap(loc.lat, loc.lng, loc.accuracy);
+          }
+        }
+      });
+    }
+
+    function updateMap(lat, lng, accuracy) {
+      if (!map) return;
+      const latLng = [lat, lng];
+
+      if (!marker) {
+        marker = L.marker(latLng).addTo(map);
+        accuracyCircle = L.circle(latLng, { radius: accuracy || 15, color: '#38bdf8', fillOpacity: 0.15 }).addTo(map);
+        map.setView(latLng, 16);
+      } else {
+        marker.setLatLng(latLng);
+        if (accuracyCircle) {
+          accuracyCircle.setLatLng(latLng);
+          accuracyCircle.setRadius(accuracy || 15);
+        }
+      }
+    }
+
+    function listenToSignaling(deviceId) {
+      const sessionRef = db.ref(`sessions/${deviceId}`);
+
+      // Watch for Offer from child device
+      sessionRef.child('offer').on('value', async snapshot => {
+        const offerData = snapshot.val();
+        if (!offerData || offerData.type !== 'offer' || !offerData.sdp) return;
+
+        log("Received SDP Offer from Android client. Initializing PeerConnection...");
+        await handleOffer(deviceId, offerData.sdp);
+      });
+
+      // Watch for Child ICE Candidates
+      sessionRef.child('childCandidates').on('child_added', snapshot => {
+        const candidateData = snapshot.val();
+        if (!candidateData || !peerConnection) return;
+
+        try {
+          const ice = new RTCIceCandidate({
+            candidate: candidateData.candidate,
+            sdpMid: candidateData.sdpMid,
+            sdpMLineIndex: candidateData.sdpMLineIndex
+          });
+          peerConnection.addIceCandidate(ice);
+          log("Added remote ICE candidate from Android client.");
+        } catch (e) {
+          console.warn("ICE error", e);
+        }
+      });
+    }
+
+    async function handleOffer(deviceId, offerSdp) {
+      if (peerConnection) {
+        peerConnection.close();
+      }
+
+      peerConnection = new RTCPeerConnection(rtcConfig);
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          log(`Local ICE candidate gathered: ${event.candidate.candidate.substring(0, 40)}...`);
+          db.ref(`sessions/${deviceId}/parentCandidates`).push({
+            candidate: event.candidate.candidate,
+            sdpMid: event.candidate.sdpMid,
+            sdpMLineIndex: event.candidate.sdpMLineIndex,
+            timestamp: Date.now()
+          });
+        }
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        log(`PeerConnection state: ${peerConnection.connectionState}`);
+        if (peerConnection.connectionState === 'connected') {
+          document.getElementById("videoResolutionTag").textContent = "Connected (WebRTC Active)";
+        }
+      };
+
+      peerConnection.ontrack = event => {
+        log(`Incoming media track received: ${event.track.kind}`);
+        const remoteVideo = document.getElementById("remoteVideo");
+        if (remoteVideo.srcObject !== event.streams[0]) {
+          remoteVideo.srcObject = event.streams[0];
+          log("Attached remote stream to video element.");
+        }
+      };
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerSdp }));
+      log("Applied remote SDP Offer.");
+
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      log("Created and set local SDP Answer. Pushing to Firebase...");
+
+      await db.ref(`sessions/${deviceId}/answer`).set({
+        type: 'answer',
+        sdp: answer.sdp
+      });
+    }
+
+    function sendCommand(action) {
+      if (!db) {
+        alert("Please connect to Firebase first.");
+        return;
+      }
+      const deviceId = document.getElementById("deviceIdInput").value.trim();
+      const payload = {
+        action: action,
+        timestamp: Date.now(),
+        requestedBy: "WebDashboard"
+      };
+
+      db.ref(`devices/${deviceId}/command`).set(payload).then(() => {
+        log(`Dispatched command: ${action}`);
+      }).catch(err => {
+        log(`Command Error: ${err.message}`);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      const savedUrl = localStorage.getItem("saved_db_url");
+      const savedId = localStorage.getItem("saved_device_id");
+      if (savedUrl) document.getElementById("dbUrlInput").value = savedUrl;
+      if (savedId) document.getElementById("deviceIdInput").value = savedId;
+    });
+</script>
+</body>
+</html>
